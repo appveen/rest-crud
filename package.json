@@ -1,0 +1,23 @@
+{
+  "name": "rest-crud",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jugnu Agrawal",
+  "license": "MIT",
+  "devDependencies": {
+    "cassandra-driver": "^4.6.3",
+    "mariadb": "^3.0.0",
+    "mongodb": "^4.6.0",
+    "mssql": "^8.1.0",
+    "mysql2": "^2.3.3",
+    "oracledb": "^5.3.0",
+    "pg": "^8.7.3"
+  },
+  "dependencies": {
+    "where-in-json": "^1.1.1"
+  }
+}
