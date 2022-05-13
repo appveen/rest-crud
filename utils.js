@@ -1,4 +1,17 @@
+const crypto = require('crypto');
 const parser = require('where-in-json');
+const _ = require('lodash');
+
+
+
+
+function token() {
+    const x = Math.random();
+    const y = Date.now();
+    return crypto.createHash('RSA-SHA256').update(y + '$' + x).digest('hex').toUpperCase();
+}
+
+
 /**
  * 
  * @param {string} key 
@@ -39,14 +52,15 @@ function createTableStatement(fields) {
 function insertStatement(fields, data) {
     const cols = [];
     const values = [];
-    Object.keys(data).forEach(dataKey => {
-        const temp = keyInFields(dataKey, fields);
-        if (temp) {
-            cols.push(temp.key);
-            if (temp.type === 'TEXT' || temp.type === 'BLOB') {
-                values.push(`'${escape(data[temp.key])}'`);
+    fields.forEach(item => {
+        const key = item.key.split('___').join('.');
+        const val = _.get(data, key);
+        if (val) {
+            cols.push(item.key);
+            if (item.type === 'TEXT' || item.type.startsWith('VARCHAR') || item.type === 'BLOB') {
+                values.push(`'${escape(val)}'`);
             } else {
-                values.push(data[temp.key]);
+                values.push(val);
             }
         }
     });
@@ -205,14 +219,26 @@ function unscapeData(data) {
 
 function getFieldsFromSchema(jsonSchema, parentKey) {
     let fields = [];
+    if (!parentKey) {
+        fields.push({
+            key: '_id',
+            type: 'VARCHAR(64)',
+            primaryKey: true
+        });
+    }
+    const typeMap = {
+        string: 'TEXT',
+        number: 'DOUBLE',
+        boolean: 'BOOLEAN'
+    }
     Object.keys(jsonSchema.properties).forEach(key => {
-        let dataKey = parentKey ? parentKey + '.' + key : key;
+        let dataKey = parentKey ? parentKey + '___' + key : key;
         if (jsonSchema.properties[key].type === 'object') {
             fields = fields.concat(getFieldsFromSchema(jsonSchema.properties[key], key));
         } else {
             fields.push({
                 key: dataKey,
-                type: jsonSchema.properties[key].type,
+                type: typeMap[jsonSchema.properties[key].type],
                 primaryKey: false,
                 unique: jsonSchema.properties[key].unique || false,
                 required: jsonSchema.required.indexOf(key) > -1,
@@ -221,6 +247,7 @@ function getFieldsFromSchema(jsonSchema, parentKey) {
     });
     return fields;
 }
+
 
 module.exports.createTableStatement = createTableStatement;
 module.exports.insertStatement = insertStatement;
@@ -231,3 +258,4 @@ module.exports.whereClause = whereClause;
 module.exports.limitClause = limitClause;
 module.exports.unscapeData = unscapeData;
 module.exports.getFieldsFromSchema = getFieldsFromSchema;
+module.exports.token = token;

@@ -55,7 +55,7 @@ function Table(options, jsonSchema) {
     this.connection = options.connection;
     this.fields = utils.getFieldsFromSchema(jsonSchema);
     let sql = utils.createTableStatement(this.fields);
-    this.connection.query(sql, function (error, results, fields) {
+    this.connection.query(`CREATE TABLE IF NOT EXISTS ${this.table}(${sql})`, function (error, results, fields) {
         if (error) {
             throw error;
         };
@@ -135,19 +135,19 @@ Table.prototype.create = function (data) {
     return new Promise((resolve, reject) => {
         try {
             if (!data._id) {
-                data._id = uniqueToken.token();
+                data._id = utils.token();
             }
             const stmt = utils.insertStatement(this.fields, data);
             if (!stmt) {
                 return reject(new Error('No data to insert'));
             }
             let sql1 = `INSERT INTO ${this.table} ${stmt}`;
-            this.connection.query(sql1, function (error, results, fields) {
+            this.connection.query(sql1, (error, results, fields) => {
                 if (error) {
                     return reject(error);
                 };
                 let sql2 = `SELECT * FROM ${this.table} WHERE _id='${data._id}'`;
-                this.connection.query(sql2, function (error, results, fields) {
+                this.connection.query(sql2, (error, results, fields) => {
                     if (error) {
                         return reject(error);
                     };

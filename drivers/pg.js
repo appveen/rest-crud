@@ -55,7 +55,7 @@ function Table(options, jsonSchema) {
     this.connection = options.connection;
     this.fields = utils.getFieldsFromSchema(jsonSchema);
     let sql = utils.createTableStatement(this.fields);
-    this.connection.query(sql, function (error, results, fields) {
+    this.connection.query(`CREATE TABLE IF NOT EXISTS ${this.table}(${sql})`, function (error, results, fields) {
         if (error) {
             throw error;
         };
