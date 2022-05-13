@@ -4,20 +4,36 @@
     "type": "object",
     "properties":
     {
-        "first_name":
+        "name":
         {
             "type": "string"
         },
-        "last_name":
+        "email":
         {
             "type": "string"
         },
-        "shipping_address":
+        "password":
+        {
+            "type": "string"
+        },
+        "contactNo":
+        {
+            "type": "string"
+        },
+        "pan":
+        {
+            "type": "string"
+        },
+        "address":
         {
             "type": "object",
             "properties":
             {
-                "street_address":
+                "stOne":
+                {
+                    "type": "string"
+                },
+                "stTwo":
                 {
                     "type": "string"
                 },
@@ -25,59 +41,28 @@
                 {
                     "type": "string"
                 },
-                "state":
+                "country":
                 {
-                    "enum":
-                    [
-                        "CA",
-                        "NY",
-                        "... etc ..."
-                    ]
+                    "type": "string"
+                },
+                "pincode":
+                {
+                    "type": "number"
                 }
             },
             "required":
             [
-                "street_address",
+                "stOne",
                 "city",
-                "state"
-            ]
-        },
-        "billing_address":
-        {
-            "type": "object",
-            "properties":
-            {
-                "street_address":
-                {
-                    "type": "string"
-                },
-                "city":
-                {
-                    "type": "string"
-                },
-                "state":
-                {
-                    "enum":
-                    [
-                        "CA",
-                        "NY",
-                        "... etc ..."
-                    ]
-                }
-            },
-            "required":
-            [
-                "street_address",
-                "city",
-                "state"
+                "pincode"
             ]
         }
     },
     "required":
     [
-        "first_name",
-        "last_name",
-        "shipping_address",
-        "billing_address"
+        "name",
+        "email",
+        "password",
+        "address"
     ]
 }
