@@ -43,13 +43,21 @@ const jsonSchema = require('./sample.json');
         // const selectRecords = await apis.list({"filter": {"name": "Jugnu"}, "select": "name,email,password"});
         // console.log('Filter and Select Records :: ', selectRecords);
 
-        // List records with filter & select
+        // List records with orderBy/sort
         // const orderedRecords = await apis.list({"sort": "-_id", "select": "name,email,password"});
         // console.log('Ordered Records :: ', orderedRecords);
 
-        // List records with filter & select
-        const limitRecords = await apis.list({"sort": "-_id", "select": "name,email,password", "count": 1, "page": 1});
-        console.log('Limit Records :: ', limitRecords);
+        // List records with orderBy, limit and offset
+        // const limitRecords = await apis.list({"sort": "-_id", "select": "name,email,password", "count": 1, "page": 1});
+        // console.log('Limit Records :: ', limitRecords);
+
+        // Show record by ID
+        const showRecord = await apis.show("EMP1001");
+        console.log('Show Record :: ', showRecord);
+
+        // Show record by ID and select fields
+        const showSelectRecord = await apis.show("EMP1002", {"select": "name,email,password,_id"});
+        console.log('Show Select Record :: ', showSelectRecord);
                 
     } catch (err) {
         console.log(err);
