@@ -10,26 +10,48 @@ const utils = require('../utils');
  * @param {boolean} options.customId
  * @param {string} options.idPattern
  */
-async function CRUD(options) {
+function CRUD(options) {
     this.database = options.database;
     this.customId = options.customId || false;
     this.idPattern = options.idPattern || '';
-    this.connection = await mssql.connect({
-        server: options.host,
-        user: options.user,
-        password: options.password,
-        database: options.database
-    });
-    this.connection.query('SELECT 1 + 1 AS solution', function (error, results, fields) {
-        if (error) throw error;
-        console.log('The solution is: ', results[0].solution);
+    this.connectionString = options.connectionString;
+}
+
+CRUD.prototype.connect = async function () {
+    try {
+        this.connection = await mssql.connect(this.connectionString)
+
+        let result = await this.connection.query('SELECT 1 + 1 AS solution');
+
+        console.log('The solution is: ', result.recordset[0].solution);
         console.log('Connection Successfull!');
-    });
+    } catch (err) {
+        console.log('Error Connecting :: ', err);
+        throw err;
+    }
 }
 
 CRUD.prototype.disconnect = function () {
     this.connection.end();
     console.log('Database Disconnected!');
+};
+
+CRUD.prototype.sqlQuery = function (sql) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (!sql) {
+                return reject(new Error('No sql query provided.'));
+            }
+            this.connection.query(sql, function (error, results, fields) {
+                if (error) {
+                    return reject(error);
+                };
+                resolve(results);
+            });
+        } catch (err) {
+            reject(err);
+        }
+    });
 };
 
 /**

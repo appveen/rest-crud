@@ -1,4 +1,4 @@
-const CRUD = require('./index').mysql;
+const CRUD = require('./index').mssql;
 // const utils = require('./utils');
 
 const jsonSchema = require('./sample.json');
@@ -6,20 +6,18 @@ const jsonSchema = require('./sample.json');
 
 (async () => {
     try {
-        const crud = new CRUD({
-            host: 'localhost',
-            user: 'root',
-            password: 'itworks@123123123',
-            database: 'test'
+        const crud = await new CRUD({
+            connectionString: 'Server=20.235.6.205,1487;Database=master;User Id=sqladmin;Password=@ppV33n@456789;Encrypt=true;Trusted_Connection=True;TrustServerCertificate=True;'
         });
 
-        // await crud.connect();
+        await crud.connect();
 
-        // const apis = crud.table('employee', jsonSchema);
+        const result = await crud.sqlQuery('SELECT 1 + 1 AS solution');
 
 
         // const count = await apis.count({});
-        // console.log('count', count);
+        // const result = await apis.sqlQuery("");
+        console.log('count', result.recordset[0].solution);
     } catch (err) {
         console.log(err);
     }
