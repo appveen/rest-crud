@@ -7,7 +7,7 @@ const jsonSchema = require('./sample.json');
 (async () => {
     try {
         const crud = await new CRUD({
-            connectionString: 'Server=20.235.6.205,1487;Database=master;User Id=sqladmin;Password=@ppV33n@456789;Encrypt=true;Trusted_Connection=True;TrustServerCertificate=True;'
+            connectionString: ''
         });
 
         await crud.connect();
