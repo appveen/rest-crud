@@ -1,5 +1,5 @@
 {
-  "name": "rest-crud",
+  "name": "@appveen/rest-crud",
   "version": "1.0.0-beta",
   "description": "",
   "main": "index.js",
@@ -16,7 +16,6 @@
     "mongodb": "^4.6.0",
     "mssql": "^8.1.0",
     "mysql2": "^2.3.3",
-    "oracledb": "^5.3.0",
     "pg": "^8.7.3"
   },
   "dependencies": {
