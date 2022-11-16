@@ -27,8 +27,8 @@ const jsonSchema = require('./sample.json');
 
 
         // Count records based on filter
-        const count = await apis.count({"name": "Ka"});
-        console.log('Records count :: ', count);
+        // const count = await apis.count({"name": "Ka"});
+        // console.log('Records count :: ', count);
 
 
         // List all records
@@ -52,12 +52,29 @@ const jsonSchema = require('./sample.json');
         // console.log('Limit Records :: ', limitRecords);
 
         // Show record by ID
-        const showRecord = await apis.show("EMP1001");
-        console.log('Show Record :: ', showRecord);
+        // const showRecord = await apis.show("EMP1001");
+        // console.log('Show Record :: ', showRecord);
 
         // Show record by ID and select fields
-        const showSelectRecord = await apis.show("EMP1002", {"select": "name,email,password,_id"});
-        console.log('Show Select Record :: ', showSelectRecord);
+        // const showSelectRecord = await apis.show("EMP1002", {"select": "name,email,password,_id"});
+        // console.log('Show Select Record :: ', showSelectRecord);
+
+        // Delete record by ID
+        // const deleteRecord = await apis.delete("EMP1003");
+        // console.log('Delete Record :: ', deleteRecord);
+
+        // Delete many records by IDs
+        // const deleteManyRecords = await apis.deleteMany("EMP1003,EMP1004");
+        // console.log('Delete Many Records :: ', deleteManyRecords);
+
+        // let data = {"name": "Kavi",
+        //     "email": "kavi@appveen.com",
+        //     "password": "abcdefgh",
+        //     "contactNo": "1234567890",
+        //     "pan": "asdfg6543h",
+        //     "address__stOne": ""}
+        // // Insert new record
+        // await apis.create()
                 
     } catch (err) {
         console.log(err);

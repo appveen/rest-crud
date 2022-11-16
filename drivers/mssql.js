@@ -80,14 +80,20 @@ function Table(options, jsonSchema) {
     this.fields = utils.getFieldsFromSchema(jsonSchema);
 }
 
-Table.prototype.createTable = function () {
-    let sql = utils.createTableStatement(this.fields);
-    this.connection.query(`CREATE TABLE ${this.table}(${sql})`, function (error, results, fields) {
-        if (error) {
-            throw error;
-        };
-        console.log(results);
-    });
+Table.prototype.createTable = async function () {
+    try {
+        let result = await this.connection.query(`SELECT * FROM sysobjects WHERE name='${this.table}' and xtype='U'`);
+        console.log(`Table exists? :: ${result.recordset.length > 0 ? 'true' : 'false'}`);
+    
+        if (result.recordset.length <= 0) {
+            let sql = utils.createTableStatement(this.fields);
+            let tableResult = await this.connection.query(`CREATE TABLE ${this.table}(${sql})`);
+            console.log('Table created :: ', tableResult);
+        }
+    } catch (err) {
+        throw err;
+    }
+    
 }
 
 Table.prototype.count = function (filter) {
@@ -222,12 +228,40 @@ Table.prototype.delete = function (id) {
                 if (error) {
                     return reject(error);
                 };
-                resolve(results);
+                resolve(results.rowsAffected[0]);
             });
         } catch (err) {
             reject(err);
         }
     });
 };
+
+Table.prototype.deleteMany = function (ids) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (!ids) {
+                return reject(new Error('No id provided to delete record'));
+            }
+            let sql = `DELETE FROM ${this.table} WHERE _id IN (`;
+            ids = ids.split(',');
+            ids.forEach((id, i) => {
+                sql += `'${id}'`
+                if (i !== ids.length - 1) {
+                    sql += ','
+                }
+            });
+            sql += ')';
+            this.connection.query(sql, function (error, results, fields) {
+                if (error) {
+                    return reject(error);
+                };
+                resolve(results.rowsAffected[0]);
+            });
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 
 module.exports = CRUD;
