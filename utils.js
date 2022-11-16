@@ -151,14 +151,17 @@ function orderByClause(fields, sort) {
     const cols = sort.split(',');
     const orderBy = [];
     cols.forEach(dataKey => {
-        const temp = keyInFields(dataKey, fields);
-        if (temp) {
-            if (dataKey.startsWith('-')) {
-                orderBy.push(`${temp.key} DESC`);
+        if (dataKey.startsWith('-')) {
+                const temp = keyInFields(dataKey.split('-')[1], fields);
+                if (temp) {
+                    orderBy.push(`${temp.key} DESC`);
+                }
             } else {
-                orderBy.push(`${temp.key} ASC`);
+                const temp = keyInFields(dataKey, fields);
+                if (temp) {
+                    orderBy.push(`${temp.key} ASC`);
+                }
             }
-        }
     });
     if (orderBy.length > 0) {
         return ' ORDER BY ' + orderBy.join(', ');
@@ -172,7 +175,7 @@ function orderByClause(fields, sort) {
  * @param {*} filter 
  */
 function whereClause(fields, filter) {
-    if (!filter) {
+    if (!filter || _.isEmpty(filter)) {
         return null;
     }
     if (typeof filter === 'string') {
@@ -198,6 +201,25 @@ function limitClause(count, page) {
         page = 1;
     }
     return ` LIMIT ${count} OFFSET ${(page - 1) * count}`;
+}
+
+
+/**
+ * 
+ * @param {number} count 
+ * @param {number} page 
+ */
+ function limitClauseMS(count, page) {
+    if (count == -1) {
+        return null;
+    }
+    if (!count) {
+        count = 30;
+    }
+    if (!page) {
+        page = 1;
+    }
+    return ` OFFSET ${(page - 1) * count} ROWS FETCH FIRST ${count} ROWS ONLY`;
 }
 
 /**
@@ -227,8 +249,8 @@ function getFieldsFromSchema(jsonSchema, parentKey) {
         });
     }
     const typeMap = {
-        string: 'TEXT',
-        number: 'DOUBLE',
+        string: 'VARCHAR(64)',
+        number: 'FLOAT',
         boolean: 'BOOLEAN'
     }
     Object.keys(jsonSchema.properties).forEach(key => {
@@ -256,6 +278,7 @@ module.exports.selectClause = selectClause;
 module.exports.orderByClause = orderByClause;
 module.exports.whereClause = whereClause;
 module.exports.limitClause = limitClause;
+module.exports.limitClauseMS = limitClauseMS;
 module.exports.unscapeData = unscapeData;
 module.exports.getFieldsFromSchema = getFieldsFromSchema;
 module.exports.token = token;
