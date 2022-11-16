@@ -75,8 +75,11 @@ function Table(options, jsonSchema) {
     this.table = options.table;
     this.connection = options.connection;
     this.fields = utils.getFieldsFromSchema(jsonSchema);
+}
+
+Table.prototype.createTable = function () {
     let sql = utils.createTableStatement(this.fields);
-    this.connection.query(`CREATE TABLE IF NOT EXISTS ${this.table}(${sql})`, function (error, results, fields) {
+    this.connection.query(`CREATE TABLE ${this.table}(${sql})`, function (error, results, fields) {
         if (error) {
             throw error;
         };
@@ -96,7 +99,7 @@ Table.prototype.count = function (filter) {
                 if (error) {
                     return reject(error);
                 };
-                resolve(results[0].count);
+                resolve(results.recordset[0].count);
             });
         } catch (err) {
             reject(err);
@@ -108,25 +111,28 @@ Table.prototype.count = function (filter) {
 Table.prototype.list = function (options) {
     return new Promise((resolve, reject) => {
         try {
-            const selectClause = utils.selectClause(this.fields, options.select) || '*';
-            const whereClause = utils.whereClause(this.fields, options.filter);
-            const limitClause = utils.limitClause(options.count, options.page);
-            const orderByClause = utils.orderByClause(this.fields, options.sort);
+            const selectClause = utils.selectClause(this.fields, options?.select) || '*';
+            const whereClause = utils.whereClause(this.fields, options?.filter);
+            let limitClause, orderByClause;
+            if (options?.sort) {
+                limitClause = utils.limitClauseMS(options?.count, options?.page);
+                orderByClause = utils.orderByClause(this.fields, options?.sort);
+            }
             let sql = `SELECT ${selectClause} FROM ${this.table}`;
             if (whereClause) {
                 sql += whereClause;
             }
-            if (limitClause) {
-                sql += limitClause;
-            }
             if (orderByClause) {
                 sql += orderByClause;
+            }
+            if (limitClause) {
+                sql += limitClause;
             }
             this.connection.query(sql, function (error, results, fields) {
                 if (error) {
                     return reject(error);
                 };
-                resolve(utils.unscapeData(results));
+                resolve(utils.unscapeData(results.recordset));
             });
         } catch (err) {
             reject(err);
