@@ -1,4 +1,4 @@
-const CRUD = require('./index').mssql;
+const CRUD = require('../index').mssql;
 // const utils = require('./utils');
 
 const jsonSchema = require('./sample.json');
@@ -48,8 +48,8 @@ const jsonSchema = require('./sample.json');
         // console.log('Ordered Records :: ', orderedRecords);
 
         // List records with orderBy, limit and offset
-        // const limitRecords = await apis.list({"sort": "-_id", "select": "name,email,password", "count": 1, "page": 1});
-        // console.log('Limit Records :: ', limitRecords);
+        const limitRecords = await apis.list({"sort": "-_id", "select": "_id,name,email,password", "count": 1, "page": 0, "filter": {"name": "Kavi"}});
+        console.log('Limit Records :: ', limitRecords);
 
         // Show record by ID
         // const showRecord = await apis.show("EMP1001");
@@ -67,15 +67,31 @@ const jsonSchema = require('./sample.json');
         // const deleteManyRecords = await apis.deleteMany("EMP1003,EMP1004");
         // console.log('Delete Many Records :: ', deleteManyRecords);
 
-        // let data = {"name": "Kavi",
-        //     "email": "kavi@appveen.com",
-        //     "password": "abcdefgh",
-        //     "contactNo": "1234567890",
-        //     "pan": "asdfg6543h",
-        //     "address__stOne": ""}
-        // // Insert new record
-        // await apis.create()
-                
+        let data = {
+            "name": "Kavi",
+            "email": "kavi@appveen.com",
+            "password": "abcdefgh",
+            "contactNo": "1234567890",
+            "pan": "Updated",
+            "address.stOne": "updated",
+            "address.stTwo": "updated",
+            "address.city": "DED",
+            "address.country": "IND",
+            "address.pincode": 412411
+        };
+        // Insert new record
+        // let createdRecord = await apis.create(data);
+        // console.log('Created Record :: ', createdRecord);
+
+        // Insert new record
+        // let createdRecords = await apis.createMany([data]);
+        // console.log('Created Records :: ', createdRecords);
+
+        let id = limitRecords[0]._id;
+        // Update existing record
+        let updatedRecord = await apis.update(id, data);
+        console.log('Updated Record :: ', updatedRecord);
+
     } catch (err) {
         console.log(err);
     }

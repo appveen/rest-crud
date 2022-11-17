@@ -2,64 +2,49 @@
     "$id": "https://example.com/schemas/customer",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
-    "properties":
-    {
-        "name":
-        {
+    "properties": {
+        "name": {
             "type": "string"
         },
-        "email":
-        {
+        "email": {
             "type": "string"
         },
-        "password":
-        {
+        "password": {
             "type": "string"
         },
-        "contactNo":
-        {
+        "contactNo": {
             "type": "string"
         },
-        "pan":
-        {
+        "pan": {
             "type": "string"
         },
-        "address":
-        {
+        "address": {
             "type": "object",
-            "properties":
-            {
-                "stOne":
-                {
+            "properties": {
+                "stOne": {
                     "type": "string"
                 },
-                "stTwo":
-                {
+                "stTwo": {
                     "type": "string"
                 },
-                "city":
-                {
+                "city": {
                     "type": "string"
                 },
-                "country":
-                {
+                "country": {
                     "type": "string"
                 },
-                "pincode":
-                {
+                "pincode": {
                     "type": "number"
                 }
             },
-            "required":
-            [
+            "required": [
                 "stOne",
                 "city",
                 "pincode"
             ]
         }
     },
-    "required":
-    [
+    "required": [
         "name",
         "email",
         "password",
