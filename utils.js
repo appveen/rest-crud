@@ -3,8 +3,6 @@ const parser = require('where-in-json');
 const _ = require('lodash');
 
 
-
-
 function token() {
     const x = Math.random();
     const y = Date.now();
@@ -20,6 +18,7 @@ function token() {
 function keyInFields(key, fields) {
     return fields.find(e => e.key === key);
 }
+
 
 /**
  * 
@@ -70,28 +69,6 @@ function insertStatement(fields, data) {
     return null;
 }
 
-/**
- * 
- * @param {Array<{key:string,type:('TEXT'|'NUMBER'|'DOUBLE'|'BLOB'),primaryKey:boolean,unique:boolean,required:boolean}>} fields 
- * @param {any} data
- */
-function updateStatement(fields, data) {
-    const sets = [];
-    Object.keys(data).forEach(dataKey => {
-        const temp = keyInFields(dataKey, fields);
-        if (temp && dataKey !== '_id') {
-            if (temp.type === 'TEXT' || temp.type === 'BLOB') {
-                sets.push(`${temp.key}='${escape(data[temp.key])}'`);
-            } else {
-                sets.push(`${temp.key}=${data[temp.key]}`);
-            }
-        }
-    });
-    if (sets.length > 0) {
-        return 'SET ' + sets.join(', ');
-    }
-    return null;
-}
 
 /**
  * 
@@ -101,12 +78,13 @@ function updateStatement(fields, data) {
 function updateStatement(fields, data) {
     const sets = [];
     Object.keys(data).forEach(dataKey => {
-        const temp = keyInFields(dataKey, fields);
-        if (temp && dataKey !== '_id') {
-            if (temp.type === 'TEXT' || temp.type === 'BLOB') {
-                sets.push(`${temp.key}='${escape(data[temp.key])}'`);
+        let key = dataKey.split('.').join('___');
+        const temp = keyInFields(key, fields);
+        if (temp && key !== '_id') {
+            if (temp.type === 'TEXT' || temp.type === 'VARCHAR(64)' || temp.type === 'BLOB') {
+                sets.push(`${temp.key}='${escape(data[dataKey])}'`);
             } else {
-                sets.push(`${temp.key}=${data[temp.key]}`);
+                sets.push(`${temp.key}=${data[dataKey]}`);
             }
         }
     });
@@ -115,6 +93,7 @@ function updateStatement(fields, data) {
     }
     return null;
 }
+
 
 /**
  * 
@@ -139,6 +118,7 @@ function selectClause(fields, select) {
     return null;
 }
 
+
 /**
  * 
  * @param {Array<{key:string,type:('TEXT'|'NUMBER'|'DOUBLE'|'BLOB'),primaryKey:boolean,unique:boolean,required:boolean}>} fields 
@@ -152,22 +132,23 @@ function orderByClause(fields, sort) {
     const orderBy = [];
     cols.forEach(dataKey => {
         if (dataKey.startsWith('-')) {
-                const temp = keyInFields(dataKey.split('-')[1], fields);
-                if (temp) {
-                    orderBy.push(`${temp.key} DESC`);
-                }
-            } else {
-                const temp = keyInFields(dataKey, fields);
-                if (temp) {
-                    orderBy.push(`${temp.key} ASC`);
-                }
+            const temp = keyInFields(dataKey.split('-')[1], fields);
+            if (temp) {
+                orderBy.push(`${temp.key} DESC`);
             }
+        } else {
+            const temp = keyInFields(dataKey, fields);
+            if (temp) {
+                orderBy.push(`${temp.key} ASC`);
+            }
+        }
     });
     if (orderBy.length > 0) {
         return ' ORDER BY ' + orderBy.join(', ');
     }
     return null;
 }
+
 
 /**
  * 
@@ -184,6 +165,7 @@ function whereClause(fields, filter) {
 
     return ' WHERE ' + parser.toWhereClause(filter);
 }
+
 
 /**
  * 
@@ -209,7 +191,7 @@ function limitClause(count, page) {
  * @param {number} count 
  * @param {number} page 
  */
- function limitClauseMS(count, page) {
+function limitClauseMS(count, page) {
     if (count == -1) {
         return null;
     }
@@ -221,6 +203,7 @@ function limitClause(count, page) {
     }
     return ` OFFSET ${(page - 1) * count} ROWS FETCH FIRST ${count} ROWS ONLY`;
 }
+
 
 /**
  * 
@@ -236,7 +219,6 @@ function unscapeData(data) {
     }
     return data;
 }
-
 
 
 function getFieldsFromSchema(jsonSchema, parentKey) {
