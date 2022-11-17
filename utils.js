@@ -240,9 +240,10 @@ function getFieldsFromSchema(jsonSchema, parentKey) {
         if (jsonSchema.properties[key].type === 'object') {
             fields = fields.concat(getFieldsFromSchema(jsonSchema.properties[key], key));
         } else {
+            let type = Array.isArray(jsonSchema.properties[key].type) ? jsonSchema.properties[key].type[0] : jsonSchema.properties[key].type;
             fields.push({
                 key: dataKey,
-                type: typeMap[jsonSchema.properties[key].type],
+                type: typeMap[type],
                 primaryKey: false,
                 unique: jsonSchema.properties[key].unique || false,
                 required: jsonSchema.required.indexOf(key) > -1,

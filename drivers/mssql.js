@@ -172,13 +172,13 @@ Table.prototype.list = function (options) {
             logger.debug('Listing rows in DB.');
             logger.trace(`Filters for listing :: ${JSON.stringify(options)}`);
 
+            let sort = options?.sort || '_id';
+
             const selectClause = utils.selectClause(this.fields, options?.select) || '*';
             const whereClause = utils.whereClause(this.fields, options?.filter);
-            let limitClause, orderByClause;
-            if (options?.sort) {
-                limitClause = utils.limitClauseMS(options?.count, options?.page);
-                orderByClause = utils.orderByClause(this.fields, options?.sort);
-            }
+            const limitClause = utils.limitClauseMS(options?.count, options?.page);
+            const orderByClause = utils.orderByClause(this.fields, sort);
+            
             let sql = `SELECT ${selectClause} FROM ${this.table}`;
             if (whereClause) {
                 sql += whereClause;
