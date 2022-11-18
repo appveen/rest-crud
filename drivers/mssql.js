@@ -172,13 +172,13 @@ Table.prototype.list = function (options) {
             logger.debug('Listing rows in DB.');
             logger.trace(`Filters for listing :: ${JSON.stringify(options)}`);
 
+            let sort = options?.sort || '_id';
+
             const selectClause = utils.selectClause(this.fields, options?.select) || '*';
             const whereClause = utils.whereClause(this.fields, options?.filter);
-            let limitClause, orderByClause;
-            if (options?.sort) {
-                limitClause = utils.limitClauseMS(options?.count, options?.page);
-                orderByClause = utils.orderByClause(this.fields, options?.sort);
-            }
+            const limitClause = utils.limitClauseMS(options?.count, options?.page);
+            const orderByClause = utils.orderByClause(this.fields, sort);
+            
             let sql = `SELECT ${selectClause} FROM ${this.table}`;
             if (whereClause) {
                 sql += whereClause;
@@ -237,16 +237,62 @@ Table.prototype.show = function (id, options) {
     });
 };
 
+// Table.prototype.create = function (data) {
+//     return new Promise(async (resolve, reject) => {
+//         try {
+//             logger.debug(`Creating new row in DB`);
+//             logger.trace(`Data to create :: ${JSON.stringify(data)}`);
+
+//             if (!data._id) {
+//                 data._id = utils.token();
+//             }
+//             const stmt = utils.insertStatement(this.fields, data);
+//             if (!stmt) {
+//                 return reject(new Error('No data to insert'));
+//             }
+//             let sql1 = `INSERT INTO ${this.table} ${stmt}`;
+
+//             logger.trace(`SQL query for insert :: ${sql1}`);
+//             await this.connection.query(sql1);
+//             logger.debug(`Record created successfully`);
+
+
+//             let sql2 = `SELECT * FROM ${this.table} WHERE _id='${data._id}'`;
+            
+//             logger.trace(`SQL query for show :: ${sql2}`);
+//             let result2 = await this.connection.query(sql2);
+
+
+//             logger.trace(`Record details :: ${JSON.stringify(utils.unscapeData(result2.recordset[0]))}`);
+//             resolve(utils.unscapeData(result2.recordset[0]));
+//         } catch (err) {
+//             logger.error(`Error inserting/displaying record :: ${err}`);
+//             reject(err);
+//         }
+//     });
+// };
+
 Table.prototype.create = function (data) {
     return new Promise(async (resolve, reject) => {
         try {
             logger.debug(`Creating new row in DB`);
             logger.trace(`Data to create :: ${JSON.stringify(data)}`);
 
-            if (!data._id) {
-                data._id = utils.token();
+            if (!data) {
+                return reject(new Error('No data to insert'));
             }
-            const stmt = utils.insertStatement(this.fields, data);
+
+            if (!Array.isArray(data)) {
+                data = [data];
+            }
+            
+            data.map(obj => {
+                if (!obj._id) {
+                    obj._id = utils.token();
+                }
+            });
+
+            const stmt = utils.insertManyStatement(this.fields, data);
             if (!stmt) {
                 return reject(new Error('No data to insert'));
             }
@@ -254,19 +300,19 @@ Table.prototype.create = function (data) {
 
             logger.trace(`SQL query for insert :: ${sql1}`);
             await this.connection.query(sql1);
-            logger.debug(`Record created successfully`);
+            logger.debug(`Records created successfully`);
 
 
-            let sql2 = `SELECT * FROM ${this.table} WHERE _id='${data._id}'`;
-            
+            let sql2 = `SELECT * FROM ${this.table} WHERE _id IN (${data.map(obj => `'${obj._id}'`).join(`,`)})`;
+
             logger.trace(`SQL query for show :: ${sql2}`);
             let result2 = await this.connection.query(sql2);
 
 
-            logger.trace(`Record details :: ${JSON.stringify(utils.unscapeData(result2.recordset[0]))}`);
-            resolve(utils.unscapeData(result2.recordset[0]));
+            logger.trace(`Records details :: ${JSON.stringify(utils.unscapeData(result2.recordset))}`);
+            resolve(utils.unscapeData(result2.recordset));
         } catch (err) {
-            logger.error(`Error inserting/displaying record :: ${err}`);
+            logger.error(`Error inserting/displaying records :: ${err}`);
             reject(err);
         }
     });
@@ -296,7 +342,7 @@ Table.prototype.update = function (id, data) {
                 };
 
                 logger.debug(`Record updated successfully`);
-                logger.trace(`Updated record details :: ${JSON.stringify(results.recordset[0])}`);
+                logger.trace(`Updated record details :: ${JSON.stringify(results)}`);
                 resolve(results);
             });
         } catch (err) {
