@@ -1,6 +1,6 @@
 {
   "name": "@appveen/rest-crud",
-  "version": "1.0.0-beta.2",
+  "version": "0.0.3",
   "description": "",
   "main": "index.js",
   "scripts": {
