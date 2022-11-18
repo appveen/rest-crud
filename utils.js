@@ -75,6 +75,43 @@ function insertStatement(fields, data) {
  * @param {Array<{key:string,type:('TEXT'|'NUMBER'|'DOUBLE'|'BLOB'),primaryKey:boolean,unique:boolean,required:boolean}>} fields 
  * @param {any} data
  */
+ function insertManyStatement(fields, data) {
+    const cols = [];
+    let values = [];
+    const valuesList = [];
+    fields.forEach(item => {
+        cols.push(item.key);
+    });
+    data.forEach(obj => {
+        fields.forEach(item => {
+            const key = item.key.split('___').join('.');
+            const val = _.get(obj, key);
+            if (val) {
+                if (item.type === 'TEXT' || item.type.startsWith('VARCHAR') || item.type === 'BLOB') {
+                    values.push(`'${escape(val)}'`);
+                } else {
+                    values.push(val);
+                }
+            } else {
+                values.push(`''`);
+            }
+        });
+        valuesList.push(values.join(', '));
+        values = [];
+    })
+    
+    if (valuesList.length > 0) {
+        return `(${cols.join(', ')}) VALUES (${valuesList.join('), (')})`;
+    }
+    return null;
+}
+
+
+/**
+ * 
+ * @param {Array<{key:string,type:('TEXT'|'NUMBER'|'DOUBLE'|'BLOB'),primaryKey:boolean,unique:boolean,required:boolean}>} fields 
+ * @param {any} data
+ */
 function updateStatement(fields, data) {
     const sets = [];
     Object.keys(data).forEach(dataKey => {
@@ -256,6 +293,7 @@ function getFieldsFromSchema(jsonSchema, parentKey) {
 
 module.exports.createTableStatement = createTableStatement;
 module.exports.insertStatement = insertStatement;
+module.exports.insertManyStatement = insertManyStatement;
 module.exports.updateStatement = updateStatement;
 module.exports.selectClause = selectClause;
 module.exports.orderByClause = orderByClause;

@@ -67,30 +67,41 @@ const jsonSchema = require('./sample.json');
         // const deleteManyRecords = await apis.deleteMany("EMP1003,EMP1004");
         // console.log('Delete Many Records :: ', deleteManyRecords);
 
-        let data = {
-            "name": "Kavi",
-            "email": "kavi@appveen.com",
-            "password": "abcdefgh",
-            "contactNo": "1234567890",
-            "pan": "Updated",
-            "address.stOne": "updated",
-            "address.stTwo": "updated",
-            "address.city": "DED",
-            "address.country": "IND",
-            "address.pincode": 412411
-        };
+        // let data = {
+        //     "name": "Kavi",
+        //     "email": "kavi@appveen.com",
+        //     "password": "abcdefgh",
+        //     "contactNo": "1234567890",
+        //     "pan": "Updated",
+        //     "address.stOne": "updated",
+        //     "address.stTwo": "updated",
+        //     "address.city": "DED",
+        //     "address.country": "IND",
+        //     "address.pincode": 412411
+        // };
+        // let data2 = {
+        //     "name": "Jugnu",
+        //     "email": "jugnu@appveen.com",
+        //     "password": "abcdefgh",
+        //     "contactNo": "1234567890",
+        //     "address.stOne": "updated",
+        //     "address.stTwo": "updated",
+        //     "address.city": "XYZ",
+        //     "address.country": "IND"
+        // };
+
         // Insert new record
         // let createdRecord = await apis.create(data);
         // console.log('Created Record :: ', createdRecord);
 
-        // Insert new record
-        // let createdRecords = await apis.createMany([data]);
+        // Insert multiple new records
+        // let createdRecords = await apis.create([data, data2]);
         // console.log('Created Records :: ', createdRecords);
 
-        let id = limitRecords[0]._id;
+        // let id = limitRecords[0]._id;
         // Update existing record
-        let updatedRecord = await apis.update(id, data);
-        console.log('Updated Record :: ', updatedRecord);
+        // let updatedRecord = await apis.update(id, data);
+        // console.log('Updated Record :: ', updatedRecord);
 
     } catch (err) {
         console.log(err);
