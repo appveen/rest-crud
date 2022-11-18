@@ -332,7 +332,7 @@ Table.prototype.update = function (id, data) {
             if (!stmt) {
                 return reject(new Error('data has no matching field to update'));
             }
-            let sql = `UPDATE ${this.table} ${stmt} WHERE _id='${id}'`;
+            let sql = `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')})`;
 
             logger.trace(`SQL query for update :: ${sql}`);
             this.connection.query(sql, function (error, results, fields) {
