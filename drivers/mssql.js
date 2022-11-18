@@ -342,7 +342,7 @@ Table.prototype.update = function (id, data) {
                 };
 
                 logger.debug(`Record updated successfully`);
-                logger.trace(`Updated record details :: ${JSON.stringify(results.recordset[0])}`);
+                logger.trace(`Updated record details :: ${JSON.stringify(results)}`);
                 resolve(results);
             });
         } catch (err) {
