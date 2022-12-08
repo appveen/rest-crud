@@ -77,7 +77,7 @@ CRUD.prototype.sqlQuery = async function (sql) {
 
         if (!sql) {
             logger.error('No sql query provided.');
-            return reject(new Error('No sql query provided.'));
+            throw new Error('No sql query provided.');
         }
 
         let result = await this.connection.query(sql);
