@@ -40,7 +40,7 @@ function CRUD(options) {
 CRUD.prototype.connect = async function () {
     try {
         logger.debug('Connecting to MYSQL');
-        logger.trace(`Connection details :: ${this.connectionDetails}`);
+        logger.trace(`Connection details :: ${JSON.stringify(this.connectionDetails)}`);
 
         this.connection = await mysql.createConnection(this.connectionDetails);
 
@@ -48,7 +48,7 @@ CRUD.prototype.connect = async function () {
 
         let result = await this.connection.query('SELECT 1 + 1 AS solution');
 
-        logger.trace(`Query Soluton :: ${result[0].solution}`);
+        logger.trace(`Query Soluton :: ${result[0][0].solution}`);
         logger.info('Connection Successfull!');
 
         return 'Connection Successfull';

@@ -126,7 +126,7 @@ Table.prototype.createTable = async function () {
         let exists = await this.connection.query(tableCheckSql);
         logger.debug(`Table exists? :: ${exists.recordset.length > 0 ? 'true' : 'false'}`);
 
-        if (result.recordset.length <= 0) {
+        if (exists.recordset.length <= 0) {
             let sql = utils.createTableStatement(this.fields);
             logger.trace(`SQL query to create table :: ${`CREATE TABLE ${this.table}(${sql})`}`);
 
