@@ -44,6 +44,8 @@ CRUD.prototype.connect = async function () {
 
         logger.trace(`Query Soluton :: ${result.recordset[0].solution}`);
         logger.info('Connection Successfull!');
+
+        return 'Connection Successfull';
     } catch (err) {
         logger.error('Error connecting :: ', err);
         throw err;
@@ -54,6 +56,8 @@ CRUD.prototype.disconnect = function () {
     try {
         this.connection.end();
         logger.info('Database Disconnected!');
+
+        return 'Database Disconnected';
     } catch (err) {
         logger.error('Error disconnecting :: ', err);
         throw err;
@@ -79,11 +83,11 @@ CRUD.prototype.sqlQuery = function (sql) {
 
                 logger.debug('Query successful');
                 logger.trace(`Query result :: ${JSON.stringify(results)}`);
-                resolve(results);
+                return resolve(results);
             });
         } catch (err) {
             logger.error(`Error querying :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
@@ -122,7 +126,7 @@ Table.prototype.createTable = async function () {
         let exists = await this.connection.query(tableCheckSql);
         logger.debug(`Table exists? :: ${exists.recordset.length > 0 ? 'true' : 'false'}`);
 
-        if (result.recordset.length <= 0) {
+        if (exists.recordset.length <= 0) {
             let sql = utils.createTableStatement(this.fields);
             logger.trace(`SQL query to create table :: ${`CREATE TABLE ${this.table}(${sql})`}`);
 
@@ -130,7 +134,10 @@ Table.prototype.createTable = async function () {
 
             logger.debug(`Table created successfully`);
             logger.trace(`Table created :: ${JSON.stringify(tableResult)}`);
+
+            return 'Table created';
         }
+        return 'Table already exists';
     } catch (err) {
         logger.error(`Error creating table :: ${err}`);
         throw err;
@@ -157,11 +164,11 @@ Table.prototype.count = function (filter) {
                 };
 
                 logger.debug(`Total records count :: ${results.recordset[0].count}`);
-                resolve(results.recordset[0].count);
+                return resolve(results.recordset[0].count);
             });
         } catch (err) {
             logger.error(`Error counting records :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
@@ -200,11 +207,11 @@ Table.prototype.list = function (options) {
 
                 logger.debug(`List query auccessful`);
                 logger.trace(`List of records :: ${JSON.stringify(utils.unscapeData(results.recordset))}`);
-                resolve(utils.unscapeData(results.recordset));
+                return resolve(utils.unscapeData(results.recordset));
             });
         } catch (err) {
             logger.error(`Error listing records :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
@@ -228,49 +235,14 @@ Table.prototype.show = function (id, options) {
 
                 logger.debug(`Show record query auccessful`);
                 logger.trace(`Record details :: ${JSON.stringify(utils.unscapeData(results.recordset[0]))}`);
-                resolve(utils.unscapeData(results.recordset[0]));
+                return resolve(utils.unscapeData(results.recordset[0]));
             });
         } catch (err) {
             logger.error(`Error fetching record :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
-
-// Table.prototype.create = function (data) {
-//     return new Promise(async (resolve, reject) => {
-//         try {
-//             logger.debug(`Creating new row in DB`);
-//             logger.trace(`Data to create :: ${JSON.stringify(data)}`);
-
-//             if (!data._id) {
-//                 data._id = utils.token();
-//             }
-//             const stmt = utils.insertStatement(this.fields, data);
-//             if (!stmt) {
-//                 return reject(new Error('No data to insert'));
-//             }
-//             let sql1 = `INSERT INTO ${this.table} ${stmt}`;
-
-//             logger.trace(`SQL query for insert :: ${sql1}`);
-//             await this.connection.query(sql1);
-//             logger.debug(`Record created successfully`);
-
-
-//             let sql2 = `SELECT * FROM ${this.table} WHERE _id='${data._id}'`;
-            
-//             logger.trace(`SQL query for show :: ${sql2}`);
-//             let result2 = await this.connection.query(sql2);
-
-
-//             logger.trace(`Record details :: ${JSON.stringify(utils.unscapeData(result2.recordset[0]))}`);
-//             resolve(utils.unscapeData(result2.recordset[0]));
-//         } catch (err) {
-//             logger.error(`Error inserting/displaying record :: ${err}`);
-//             reject(err);
-//         }
-//     });
-// };
 
 Table.prototype.create = function (data) {
     return new Promise(async (resolve, reject) => {
@@ -310,10 +282,10 @@ Table.prototype.create = function (data) {
 
 
             logger.trace(`Records details :: ${JSON.stringify(utils.unscapeData(result2.recordset))}`);
-            resolve(utils.unscapeData(result2.recordset));
+            return resolve(utils.unscapeData(result2.recordset));
         } catch (err) {
             logger.error(`Error inserting/displaying records :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
@@ -343,11 +315,11 @@ Table.prototype.update = function (id, data) {
 
                 logger.debug(`Record updated successfully`);
                 logger.trace(`Updated record details :: ${JSON.stringify(results)}`);
-                resolve(results);
+                return resolve(results);
             });
         } catch (err) {
             logger.error(`Error updating record :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
@@ -370,11 +342,11 @@ Table.prototype.delete = function (id) {
                 };
 
                 logger.debug(`Record deleted successfully`);
-                resolve(results.rowsAffected[0]);
+                return resolve(results.rowsAffected[0]);
             });
         } catch (err) {
             logger.error(`Error deleting record :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
@@ -397,11 +369,11 @@ Table.prototype.deleteMany = function (ids) {
                 };
 
                 logger.debug(`Records deleted successfully :: ${results.rowsAffected[0]}`);
-                resolve(results.rowsAffected[0]);
+                return resolve(results.rowsAffected[0]);
             });
         } catch (err) {
             logger.error(`Error deleting multiple records :: ${err}`);
-            reject(err);
+            return reject(err);
         }
     });
 };
