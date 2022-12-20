@@ -54,7 +54,7 @@ CRUD.prototype.connect = async function () {
 
 CRUD.prototype.disconnect = function () {
     try {
-        this.connection.end();
+        this.connection.close();
         logger.info('Database Disconnected!');
 
         return 'Database Disconnected';
@@ -126,7 +126,7 @@ Table.prototype.createTable = async function () {
         let exists = await this.connection.query(tableCheckSql);
         logger.debug(`Table exists? :: ${exists.recordset.length > 0 ? 'true' : 'false'}`);
 
-        if (exists.recordset.length <= 0) {
+        if (result.recordset.length <= 0) {
             let sql = utils.createTableStatement(this.fields);
             logger.trace(`SQL query to create table :: ${`CREATE TABLE ${this.table}(${sql})`}`);
 
