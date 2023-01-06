@@ -206,9 +206,9 @@ Table.prototype.show = async function (id, options) {
         let result = await this.connection.query(sql);
 
         logger.debug(`Show record query auccessful`);
-        logger.trace(`Record details :: ${JSON.stringify(utils.unscapeData(result[0]))}`);
+        logger.trace(`Record details :: ${JSON.stringify(utils.unscapeData(result[0][0]))}`);
 
-        return utils.unscapeData(result[0]);
+        return utils.unscapeData(result[0][0]);
 
     } catch (err) {
         logger.error(`Error fetching record :: ${err}`);
