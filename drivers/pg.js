@@ -163,8 +163,12 @@ Table.prototype.list = async function (options) {
         logger.debug('Listing rows in DB.');
         logger.trace(`Filters for listing :: ${JSON.stringify(options)}`);
 
+        let whereClause;
+        if (options?.filter && !_.isEmpty(options.filter)){
+            whereClause = utils.whereClause(this.fields, options?.filter);
+        }
+
         const selectClause = utils.selectClause(this.fields, options?.select) || '*';
-        const whereClause = utils.whereClause(this.fields, options?.filter);
         const limitClause = utils.limitClause(options?.count, options?.page);
         const orderByClause = utils.orderByClause(this.fields, options?.sort);
 

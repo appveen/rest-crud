@@ -181,11 +181,15 @@ Table.prototype.list = function (options) {
 
             let sort = options?.sort || '_id';
 
+            let whereClause;
+            if (options?.filter && !_.isEmpty(options.filter)) {
+                whereClause = utils.whereClause(this.fields, options?.filter);
+            }
+
             const selectClause = utils.selectClause(this.fields, options?.select) || '*';
-            const whereClause = utils.whereClause(this.fields, options?.filter);
             const limitClause = utils.limitClauseMS(options?.count, options?.page);
             const orderByClause = utils.orderByClause(this.fields, sort);
-            
+
             let sql = `SELECT ${selectClause} FROM ${this.table}`;
             if (whereClause) {
                 sql += whereClause;
@@ -257,7 +261,7 @@ Table.prototype.create = function (data) {
             if (!Array.isArray(data)) {
                 data = [data];
             }
-            
+
             data.map(obj => {
                 if (!obj._id) {
                     obj._id = utils.token();
@@ -360,7 +364,7 @@ Table.prototype.deleteMany = function (ids) {
                 return reject(new Error('No id provided to delete record'));
             }
             let sql = `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')})`;
-            
+
             logger.trace(`SQL query for deleting multiple records :: ${sql}`);
             this.connection.query(sql, function (error, results, fields) {
                 if (error) {
