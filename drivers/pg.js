@@ -82,7 +82,7 @@ CRUD.prototype.sqlQuery = async function (sql) {
         let result = await this.connection.query(sql);
 
         logger.trace(`Query result :: ${JSON.stringify(result.rows[0])}`);
-        return result;
+        return result.rows;
 
     } catch (err) {
         logger.error(`Error querying :: ${err}`);
