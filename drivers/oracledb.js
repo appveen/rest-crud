@@ -1,5 +1,19 @@
 const oracledb = require('oracledb');
+const log4js = require('log4js');
 const utils = require('../utils');
+const version = require('../package.json').version;
+
+const logLevel = process.env.LOG_LEVEL || 'trace';
+const loggerName = process.env.HOSTNAME ? `[${process.env.DATA_STACK_NAMESPACE}] [${process.env.HOSTNAME}] [REST_CRUD ORACLE ${version}]` : `[REST_CRUD ORACLE ${version}]`;
+
+log4js.configure({
+    levels: {
+        AUDIT: { value: Number.MAX_VALUE - 1, colour: 'yellow' }
+    },
+    appenders: { out: { type: 'stdout', layout: { type: 'basic' } } },
+    categories: { default: { appenders: ['out'], level: logLevel.toUpperCase() } }
+});
+let logger = log4js.getLogger(loggerName);
 
 /**
  * @param {object} options CRUD options
@@ -30,6 +44,26 @@ CRUD.prototype.disconnect = function () {
     this.connection.end();
     console.log('Database Disconnected!');
 };
+
+CRUD.prototype.sqlQuery = async function (sql, values) {
+    if (!sql) {
+        logger.error('No SQL query provided.');
+        throw new Error('No SQL query provided.');
+    }
+
+    try {
+        logger.debug(`Performing SQL Query`);
+        logger.trace(`SQL Query :: ${sql}`);
+        
+        const result = await this.connection.execute(sql, values);
+        
+        logger.trace(`Query result :: ${JSON.stringify(result)}`);
+        return result;
+    } catch (err) {
+        logger.error(`Error querying :: ${err}`);
+        throw err;
+    }
+}
 
 /**
  * @param {string} table
