@@ -75,7 +75,7 @@ CRUD.prototype.sqlQuery = function (sql, values) {
                 return reject(new Error('No sql query provided.'));
             }
 
-            const request = new sql.Request(this.connection);
+            const request = new mssql.Request(this.connection);
 
             if (values && Array.isArray(values)) {
                 values.forEach((value, index) => {
