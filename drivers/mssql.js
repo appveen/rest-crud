@@ -64,7 +64,7 @@ CRUD.prototype.disconnect = function () {
     }
 };
 
-CRUD.prototype.sqlQuery = function (sql) {
+CRUD.prototype.sqlQuery = function (sql, values) {
     return new Promise((resolve, reject) => {
         try {
             logger.debug(`Performing SQL Query`);
@@ -75,7 +75,15 @@ CRUD.prototype.sqlQuery = function (sql) {
                 return reject(new Error('No sql query provided.'));
             }
 
-            this.connection.query(sql, function (error, results, fields) {
+            const request = new sql.Request(this.connection);
+
+            if (values && Array.isArray(values)) {
+                values.forEach((value, index) => {
+                    request.input(`param${index + 1}`, value);
+                });
+            }
+
+            request.query(sql, function (error, results) {
                 if (error) {
                     logger.error(`Error querying db :: ${error}`);
                     return reject(error);

@@ -69,7 +69,7 @@ CRUD.prototype.disconnect = async function () {
     }
 };
 
-CRUD.prototype.sqlQuery = async function (sql) {
+CRUD.prototype.sqlQuery = async function (sql, values) {
     try {
         logger.debug(`Performing SQL Query`);
         logger.trace(`SQL Query :: ${sql}`);
@@ -79,7 +79,7 @@ CRUD.prototype.sqlQuery = async function (sql) {
             throw new Error('No sql query provided.');
         }
 
-        let result = await this.connection.query(sql);
+        let result = await this.connection.query(sql, values);
 
         logger.trace(`Query result :: ${JSON.stringify(result.rows[0])}`);
         return result.rows;
