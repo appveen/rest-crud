@@ -24,19 +24,21 @@ let logger = log4js.getLogger(loggerName);
  * @param {boolean} options.customId
  * @param {string} options.idPattern
  */
-async function CRUD(options) {
+function CRUD(options) {
     this.database = options.database;
     this.customId = options.customId || false;
     this.idPattern = options.idPattern || '';
-    this.connection = await oracledb.getConnection({
+    this.connection = oracledb.getConnection({
         connectString: options.host,
         user: options.user,
         password: options.password
-    });
-    this.connection.execute('SELECT 1 + 1 AS solution', function (error, results, fields) {
-        if (error) throw error;
-        console.log('The solution is: ', results.rows[0].solution);
-        console.log('Connection Successfull!');
+    }).then((conn) => {
+        this.connection = conn;
+        this.connection.execute('SELECT 1 + 1 AS solution', function (error, results, fields) {
+            if (error) throw error;
+            console.log('The solution is: ', results.rows[0].solution);
+            console.log('Connection Successfull!');
+        });
     });
 }
 
@@ -54,9 +56,9 @@ CRUD.prototype.sqlQuery = async function (sql, values) {
     try {
         logger.debug(`Performing SQL Query`);
         logger.trace(`SQL Query :: ${sql}`);
-        
+
         const result = await this.connection.execute(sql, values);
-        
+
         logger.trace(`Query result :: ${JSON.stringify(result)}`);
         return result;
     } catch (err) {
