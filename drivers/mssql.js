@@ -91,7 +91,7 @@ CRUD.prototype.sqlQuery = function (sql, values) {
 
                 logger.debug('Query successful');
                 logger.trace(`Query result :: ${JSON.stringify(results)}`);
-                return resolve(results.recordset);
+                return resolve(utils.unscapeData(results.recordset));
             });
         } catch (err) {
             logger.error(`Error querying :: ${err}`);

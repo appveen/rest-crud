@@ -9,12 +9,6 @@
   },
   "author": "Jugnu Agrawal",
   "license": "MIT",
-  "devDependencies": {
-    "cassandra-driver": "^4.7.2",
-    "express": "^4.18.1",
-    "mariadb": "^3.2.3",
-    "mongodb": "^6.3.0"
-  },
   "dependencies": {
     "lodash": "^4.17.21",
     "log4js": "^6.9.1",
@@ -22,6 +16,6 @@
     "mysql2": "^3.9.4",
     "oracledb": "^6.3.0",
     "pg": "^8.11.3",
-    "where-in-json": "^1.1.1"
+    "where-in-json": "^1.1.2"
   }
 }
