@@ -28,13 +28,30 @@ function CRUD(options) {
     this.database = options.database;
     this.customId = options.customId || false;
     this.idPattern = options.idPattern || '';
-    this.connectionDetails = {
-        host: options.host,
-        port: options.port,
+    const connectionProps = {
         user: options.user,
         password: options.password,
-        database: options.database
+        host: options.host,
+        port: options.port,
+        database: options.database,
+        connectionString: options.connectionString,
+        ssl: options.ssl,
+        types: options.types,
+        statement_timeout: options.statement_timeout,
+        query_timeout: options.query_timeout,
+        lock_timeout: options.lock_timeout,
+        application_name: options.application_name,
+        connectionTimeoutMillis: options.connectionTimeoutMillis,
+        keepAliveInitialDelayMillis: options.keepAliveInitialDelayMillis,
+        idle_in_transaction_session_timeout: options.idle_in_transaction_session_timeout,
+        client_encoding: options.client_encoding,
+        fallback_application_name: options.fallback_application_name,
+        options: options.options,
     };
+    
+    this.connectionDetails = Object.fromEntries(
+        Object.entries(connectionProps).filter(([_, v]) => v != null && v !== undefined)
+    );
 }
 
 CRUD.prototype.connect = async function () {
