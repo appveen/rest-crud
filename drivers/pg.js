@@ -48,7 +48,7 @@ function CRUD(options) {
         fallback_application_name: options.fallback_application_name,
         options: options.options,
     };
-    
+    logger.info('Connection props :: ', connectionProps);
     this.connectionDetails = Object.fromEntries(
         Object.entries(connectionProps).filter(([_, v]) => v != null && v !== undefined)
     );
