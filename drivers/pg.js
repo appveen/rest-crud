@@ -1,4 +1,4 @@
-const { Client } = require('pg');
+const { Pool } = require('pg');
 let log4js = require('log4js');
 
 const utils = require('../utils');
@@ -47,6 +47,7 @@ function CRUD(options) {
         client_encoding: options.client_encoding,
         fallback_application_name: options.fallback_application_name,
         options: options.options,
+        idleTimeoutMillis: options.idleTimeoutMillis
     };
     // logger.info('Connection props :: ', connectionProps);
     this.connectionDetails = Object.fromEntries(
@@ -59,11 +60,19 @@ CRUD.prototype.connect = async function () {
         logger.debug('Connecting to PGSQL');
         logger.trace(`Connection details :: ${JSON.stringify(this.connectionDetails)}`);
 
-        this.connection = await new Client(this.connectionDetails);
-
+        this.connection = await new Pool(this.connectionDetails);
         this.connection.connect();
         let result = await this.connection.query('SELECT 1 + 1 AS solution');
+        this.connection.on('connect', () => {
+            logger.trace(' Client connected to pool');
+        });
+        this.connection.on('remove', () => {
+            logger.trace(' Client removed from pool');
+        });
 
+        this.connection.on('error', (err) => {
+            logger.trace(' Unexpected error on idle client', err);
+        });
         console.log('The solution is: ', result.rows[0].solution);
         console.log('Connection Successfull!');
 
@@ -181,7 +190,7 @@ Table.prototype.list = async function (options) {
         logger.trace(`Filters for listing :: ${JSON.stringify(options)}`);
 
         let whereClause;
-        if (options?.filter && !_.isEmpty(options.filter)){
+        if (options?.filter && !_.isEmpty(options.filter)) {
             whereClause = utils.whereClause(this.fields, options?.filter);
         }
 
