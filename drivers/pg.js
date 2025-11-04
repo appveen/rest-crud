@@ -63,14 +63,14 @@ CRUD.prototype.connect = async function () {
         this.connection = await new Pool(this.connectionDetails);
         this.connection.connect();
         let result = await this.connection.query('SELECT 1 + 1 AS solution');
-        pool.on('connect', () => {
+        this.connection.on('connect', () => {
             logger.trace(' Client connected to pool');
         });
-        pool.on('remove', () => {
+        this.connection.on('remove', () => {
             logger.trace(' Client removed from pool');
         });
 
-        pool.on('error', (err) => {
+        this.connection.on('error', (err) => {
             logger.trace(' Unexpected error on idle client', err);
         });
         console.log('The solution is: ', result.rows[0].solution);
