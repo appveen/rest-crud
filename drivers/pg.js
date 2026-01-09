@@ -22,23 +22,8 @@ function CRUD(options) {
     this.customId = options.customId || false;
     this.idPattern = options.idPattern || '';
 
-    const connectionProps = {
-        user: options.user,
-        password: options.password,
-        host: options.host,
-        port: options.port,
-        database: options.database,
-        connectionString: options.connectionString,
-        ssl: options.ssl,
-        idle_in_transaction_session_timeout: options.idle_in_transaction_session_timeout,
-        connectionTimeoutMillis: options.connectionTimeoutMillis,
-        client_encoding: options.client_encoding,
-        application_name: options.application_name,
-        fallback_application_name: options.fallback_application_name,
-    };
-
     this.connectionDetails = Object.fromEntries(
-      Object.entries(connectionProps).filter(([_, v]) => v !== null && v !== undefined)
+        Object.entries(options).filter(([_, v]) => v !== null && v !== undefined)
     );
 }
 
@@ -51,20 +36,42 @@ CRUD.prototype.connect = async function () {
         logger.debug('Connecting to PostgreSQL (postgres lib)');
         logger.trace(`Connection details :: ${JSON.stringify(this.connectionDetails)}`);
 
-        // Create postgres client
-        this.connection = postgres(
-          this.connectionDetails.connectionString ||
-          {
-              host: this.connectionDetails.host,
-              port: this.connectionDetails.port,
-              username: this.connectionDetails.user,
-              password: this.connectionDetails.password,
-              database: this.connectionDetails.database,
-              ssl: this.connectionDetails.ssl,
-              idle_timeout: this.connectionDetails.idle_in_transaction_session_timeout,
-              connect_timeout: this.connectionDetails.connectionTimeoutMillis
-          }
+        let baseOptions = {
+            ssl: this.connectionDetails.ssl,
+            idle_timeout: this.connectionDetails.idle_in_transaction_session_timeout,
+            connect_timeout: this.connectionDetails.connectionTimeoutMillis,
+            types: {
+                date: {
+                    from: [1082],
+                    parse: v => v
+                },
+                timestamp: {
+                    from: [1114],
+                    parse: v => v
+                },
+                timestamptz: {
+                    from: [1184],
+                    parse: v => v
+                }
+            }
+        };
+        baseOptions = Object.fromEntries(
+            Object.entries(baseOptions).filter(([_, v]) => v !== null && v !== undefined)
         );
+        // Create postgres client
+        this.connection = this.connectionDetails.connectionString
+            ? postgres(this.connectionDetails.connectionString,
+                {
+                    ...baseOptions
+                })
+            : postgres({
+                host: this.connectionDetails.host,
+                port: this.connectionDetails.port,
+                username: this.connectionDetails.user,
+                password: this.connectionDetails.password,
+                database: this.connectionDetails.database,
+                ...baseOptions
+            });
 
         // Test connection
         const result = await this.connection`SELECT 1 + 1 AS solution`;
@@ -107,7 +114,7 @@ CRUD.prototype.sqlQuery = async function (sql, values) {
         const result = await this.connection.unsafe(sql, values);
 
         logger.trace(`Query result :: ${JSON.stringify(result[0])}`);
-        return utils.unscapeData(result);
+        return result;
 
     } catch (err) {
         logger.error(`Error querying :: ${err}`);
@@ -209,7 +216,7 @@ Table.prototype.list = async function (options) {
         logger.trace(`SQL :: ${sql}`);
 
         const result = await this.connection.unsafe(sql);
-        return utils.unscapeData(result);
+        return result;
 
     } catch (err) {
         logger.error(`Error listing records :: ${err}`);
@@ -231,7 +238,7 @@ Table.prototype.show = async function (id, options) {
         logger.trace(`SQL :: ${sql}`);
 
         const result = await this.connection.unsafe(sql);
-        return utils.unscapeData(result[0]);
+        return result[0];
 
     } catch (err) {
         logger.error(`Error fetching record :: ${err}`);
@@ -261,12 +268,12 @@ Table.prototype.create = async function (data) {
         await this.connection.unsafe(insertSQL);
 
         const selectSQL =
-          `SELECT * FROM ${this.table} WHERE _id IN (${data.map(o => `'${o._id}'`).join(',')})`;
+            `SELECT * FROM ${this.table} WHERE _id IN (${data.map(o => `'${o._id}'`).join(',')})`;
 
         logger.trace(`SQL Select :: ${selectSQL}`);
 
         const result = await this.connection.unsafe(selectSQL);
-        return utils.unscapeData(result);
+        return result;
 
     } catch (err) {
         logger.error(`Error in create :: ${err}`);
@@ -287,7 +294,7 @@ Table.prototype.update = async function (id, data) {
         if (!stmt) throw new Error('Invalid update payload');
 
         const sql =
-          `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')})`;
+            `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')})`;
 
         logger.trace(`SQL :: ${sql}`);
 
@@ -331,7 +338,7 @@ Table.prototype.deleteMany = async function (ids) {
         if (!ids) throw new Error('No ids provided');
 
         const sql =
-          `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')})`;
+            `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')})`;
 
         logger.trace(`SQL :: ${sql}`);
 
