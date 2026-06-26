@@ -14,6 +14,54 @@ log4js.configure({
 let logger = log4js.getLogger(loggerName);
 
 
+function resolveNumber(envValue, defaultValue) {
+    const n = parseInt(envValue, 10);
+    return Number.isNaN(n) ? defaultValue : n;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+const RETRYABLE_PG_CODES = new Set([
+    '57P01', '57P02', '57P03', '57P05', '08000', '08003', '08006', '25P03', '53300'
+]);
+
+const RETRYABLE_CONN_CODES = new Set([
+    'CONNECTION_CLOSED', 'CONNECTION_DESTROYED', 'CONNECTION_ENDED', 'CONNECT_TIMEOUT',
+    'CONNECTION_CLOSED_BY_PEER', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED', 'EHOSTUNREACH'
+]);
+
+function isRetryableConnectionError(err) {
+    if (!err) return false;
+    const code = err.code || err.errno;
+    if (RETRYABLE_CONN_CODES.has(code) || RETRYABLE_PG_CODES.has(code)) return true;
+    const msg = String(err.message || '').toLowerCase();
+    return msg.includes('idle-session timeout')
+        || msg.includes('terminating connection')
+        || msg.includes('connection closed')
+        || msg.includes('connection ended');
+}
+
+async function runWithRetry(connection, sql, values) {
+    const maxRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
+    const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await connection.unsafe(sql, values);
+        } catch (err) {
+            if (!isRetryableConnectionError(err) || attempt >= maxRetries) {
+                logger.error(`Error querying :: ${err}`);
+                throw err;
+            }
+            logger.trace(`Connection error (${err.code || err.errno || err.message}); retry ${attempt + 1}/${maxRetries} on a fresh connection`);
+            await sleep(retryDelayMs * (attempt + 1));
+        }
+    }
+}
+
+
 /**
  * @param {object} options CRUD options
  */
@@ -36,10 +84,17 @@ CRUD.prototype.connect = async function () {
         logger.debug('Connecting to PostgreSQL (postgres lib)');
         logger.trace(`Connection details :: ${JSON.stringify(this.connectionDetails)}`);
 
+        const cd = this.connectionDetails;
+
+        const optNum = (v) => { const n = parseInt(v, 10); return Number.isNaN(n) ? undefined : n; };
+
         let baseOptions = {
-            ssl: this.connectionDetails.ssl,
-            idle_timeout: this.connectionDetails.idle_in_transaction_session_timeout,
-            connect_timeout: this.connectionDetails.connectionTimeoutMillis,
+            ssl: cd.ssl,
+            max: parseInt(cd.maxPool, 10) || 10,
+            idle_timeout: optNum(cd.idleTimeout),
+            max_lifetime: optNum(cd.maxLifetime),
+            connect_timeout: optNum(cd.connectTimeout),
+            onnotice: (notice) => logger.trace(`PG Notice :: ${notice && notice.message}`),
             types: {
                 date: {
                     from: [1082],
@@ -59,17 +114,17 @@ CRUD.prototype.connect = async function () {
             Object.entries(baseOptions).filter(([_, v]) => v !== null && v !== undefined)
         );
         // Create postgres client
-        this.connection = this.connectionDetails.connectionString
-            ? postgres(this.connectionDetails.connectionString,
+        this.connection = cd.connectionString
+            ? postgres(cd.connectionString,
                 {
                     ...baseOptions
                 })
             : postgres({
-                host: this.connectionDetails.host,
-                port: this.connectionDetails.port,
-                username: this.connectionDetails.user,
-                password: this.connectionDetails.password,
-                database: this.connectionDetails.database,
+                host: cd.host,
+                port: cd.port,
+                username: cd.user,
+                password: cd.password,
+                database: cd.database,
                 ...baseOptions
             });
 
@@ -105,21 +160,14 @@ CRUD.prototype.disconnect = async function () {
  * Raw SQL query handler
  */
 CRUD.prototype.sqlQuery = async function (sql, values) {
-    try {
-        logger.debug('Performing SQL Query');
-        logger.trace(`SQL Query :: ${sql}`);
+    logger.debug('Performing SQL Query');
+    logger.trace(`SQL Query :: ${sql}`);
 
-        if (!sql) throw new Error('No sql query provided.');
+    if (!sql) throw new Error('No sql query provided.');
 
-        const result = await this.connection.unsafe(sql, values);
-
-        logger.trace(`Query result :: ${JSON.stringify(result[0])}`);
-        return result;
-
-    } catch (err) {
-        logger.error(`Error querying :: ${err}`);
-        throw err;
-    }
+    const result = await runWithRetry(this.connection, sql, values);
+    logger.trace(`Query result :: ${JSON.stringify(result[0])}`);
+    return result;
 };
 
 
@@ -162,7 +210,7 @@ Table.prototype.createTable = async function () {
 
         logger.trace(`SQL :: ${query}`);
 
-        await this.connection.unsafe(query);
+        await runWithRetry(this.connection, query);
 
         logger.debug('Table created successfully');
         return 'Table created';
@@ -186,7 +234,7 @@ Table.prototype.count = async function (filter) {
 
         logger.trace(`SQL :: ${sql}`);
 
-        const result = await this.connection.unsafe(sql);
+        const result = await runWithRetry(this.connection, sql);
         return result[0].count;
 
     } catch (err) {
@@ -215,7 +263,7 @@ Table.prototype.list = async function (options) {
 
         logger.trace(`SQL :: ${sql}`);
 
-        const result = await this.connection.unsafe(sql);
+        const result = await runWithRetry(this.connection, sql);
         return result;
 
     } catch (err) {
@@ -237,7 +285,7 @@ Table.prototype.show = async function (id, options) {
 
         logger.trace(`SQL :: ${sql}`);
 
-        const result = await this.connection.unsafe(sql);
+        const result = await runWithRetry(this.connection, sql);
         return result[0];
 
     } catch (err) {
@@ -265,14 +313,14 @@ Table.prototype.create = async function (data) {
         const insertSQL = `INSERT INTO ${this.table} ${stmt}`;
         logger.trace(`SQL Insert :: ${insertSQL}`);
 
-        await this.connection.unsafe(insertSQL);
+        await runWithRetry(this.connection, insertSQL);
 
         const selectSQL =
             `SELECT * FROM ${this.table} WHERE _id IN (${data.map(o => `'${o._id}'`).join(',')})`;
 
         logger.trace(`SQL Select :: ${selectSQL}`);
 
-        const result = await this.connection.unsafe(selectSQL);
+        const result = await runWithRetry(this.connection, selectSQL);
         return result;
 
     } catch (err) {
@@ -298,7 +346,7 @@ Table.prototype.update = async function (id, data) {
 
         logger.trace(`SQL :: ${sql}`);
 
-        const result = await this.connection.unsafe(sql);
+        const result = await runWithRetry(this.connection, sql);
         return result.length;   // number of affected rows
 
     } catch (err) {
@@ -319,7 +367,7 @@ Table.prototype.delete = async function (id) {
         const sql = `DELETE FROM ${this.table} WHERE _id='${id}'`;
         logger.trace(`SQL :: ${sql}`);
 
-        const result = await this.connection.unsafe(sql);
+        const result = await runWithRetry(this.connection, sql);
         return result.length;
 
     } catch (err) {
@@ -342,7 +390,7 @@ Table.prototype.deleteMany = async function (ids) {
 
         logger.trace(`SQL :: ${sql}`);
 
-        const result = await this.connection.unsafe(sql);
+        const result = await runWithRetry(this.connection, sql);
         return result.length;
 
     } catch (err) {
