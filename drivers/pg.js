@@ -43,19 +43,49 @@ function isRetryableConnectionError(err) {
         || msg.includes('connection ended');
 }
 
+const lastSuccessAt = new WeakMap();
+
+function withinBypassWindow(pool, windowMs) {
+    if (windowMs <= 0) return false;
+    const last = lastSuccessAt.get(pool);
+    return last !== undefined && (Date.now() - last) < windowMs;
+}
+
 async function runWithRetry(connection, sql, values) {
     const maxRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
     const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
+    const preValidate = String(process.env.PG_PRE_VALIDATE || '').toLowerCase() === 'true';
+    const bypassWindowMs = Math.max(0, resolveNumber(process.env.PG_PRE_VALIDATE_INTERVAL, 0));
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            return await connection.unsafe(sql, values);
+            let result;
+            if (preValidate && !withinBypassWindow(connection, bypassWindowMs)) {
+                const reserved = await connection.reserve();
+                try {
+                    try {
+                        await reserved`SELECT 1`;
+                    } catch (pingErr) {
+                        logger.warn(`Pre-validation caught stale connection (${pingErr.code || pingErr.errno || pingErr.message})`);
+                        throw pingErr;
+                    }
+                    result = await reserved.unsafe(sql, values);
+                } finally {
+                    try { reserved.release(); } catch (releaseErr) {
+                        logger.trace(`Failed to release reserved connection :: ${releaseErr}`);
+                    }
+                }
+            } else {
+                result = await connection.unsafe(sql, values);
+            }
+            if (preValidate) lastSuccessAt.set(connection, Date.now());
+            return result;
         } catch (err) {
             if (!isRetryableConnectionError(err) || attempt >= maxRetries) {
                 logger.error(`Error querying :: ${err}`);
                 throw err;
             }
-            logger.trace(`Connection error (${err.code || err.errno || err.message}); retry ${attempt + 1}/${maxRetries} on a fresh connection`);
+            logger.trace(`Connection error (${err.code || err.errno || err.message}); retry ${attempt + 1}/${maxRetries} — re-executing the same query on a fresh connection :: ${sql}`);
             await sleep(retryDelayMs * (attempt + 1));
         }
     }
@@ -94,6 +124,9 @@ CRUD.prototype.connect = async function () {
             idle_timeout: optNum(cd.idleTimeout),
             max_lifetime: optNum(cd.maxLifetime),
             connect_timeout: optNum(cd.connectTimeout),
+            connection: {
+                application_name: cd.applicationName || process.env.HOSTNAME || 'rest-crud'
+            },
             onnotice: (notice) => logger.trace(`PG Notice :: ${notice && notice.message}`),
             types: {
                 date: {
@@ -146,7 +179,7 @@ CRUD.prototype.connect = async function () {
  */
 CRUD.prototype.disconnect = async function () {
     try {
-        await this.connection.end();
+        await this.connection.end({ timeout: 5 });
         console.log('Database Disconnected!');
         return 'Database Disconnected';
     } catch (err) {
@@ -168,6 +201,37 @@ CRUD.prototype.sqlQuery = async function (sql, values) {
     const result = await runWithRetry(this.connection, sql, values);
     logger.trace(`Query result :: ${JSON.stringify(result[0])}`);
     return result;
+};
+
+
+/**
+ * Runs fn inside a transaction on a single reserved connection. Connection-class
+ * errors retry the whole block, so fn must be safe to re-run.
+ */
+CRUD.prototype.withTransaction = async function (fn) {
+    const maxRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
+    const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await this.connection.begin(async (txSql) => {
+                const tx = {
+                    sqlQuery: (sql, values) => {
+                        logger.trace(`TX SQL :: ${sql}`);
+                        return txSql.unsafe(sql, values);
+                    }
+                };
+                return fn(tx);
+            });
+        } catch (err) {
+            if (!isRetryableConnectionError(err) || attempt >= maxRetries) {
+                logger.error(`Error in transaction :: ${err}`);
+                throw err;
+            }
+            logger.trace(`Connection error (${err.code || err.errno || err.message}); retrying transaction ${attempt + 1}/${maxRetries} as a whole block`);
+            await sleep(retryDelayMs * (attempt + 1));
+        }
+    }
 };
 
 
@@ -310,17 +374,10 @@ Table.prototype.create = async function (data) {
         const stmt = utils.insertManyStatement(this.fields, data);
         if (!stmt) throw new Error('No data to insert');
 
-        const insertSQL = `INSERT INTO ${this.table} ${stmt}`;
+        const insertSQL = `INSERT INTO ${this.table} ${stmt} RETURNING *`;
         logger.trace(`SQL Insert :: ${insertSQL}`);
 
-        await runWithRetry(this.connection, insertSQL);
-
-        const selectSQL =
-            `SELECT * FROM ${this.table} WHERE _id IN (${data.map(o => `'${o._id}'`).join(',')})`;
-
-        logger.trace(`SQL Select :: ${selectSQL}`);
-
-        const result = await runWithRetry(this.connection, selectSQL);
+        const result = await runWithRetry(this.connection, insertSQL);
         return result;
 
     } catch (err) {
@@ -342,7 +399,7 @@ Table.prototype.update = async function (id, data) {
         if (!stmt) throw new Error('Invalid update payload');
 
         const sql =
-            `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')})`;
+            `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')}) RETURNING _id`;
 
         logger.trace(`SQL :: ${sql}`);
 
@@ -364,7 +421,7 @@ Table.prototype.delete = async function (id) {
         logger.debug(`Deleting record :: ${id}`);
         if (!id) throw new Error('No id provided');
 
-        const sql = `DELETE FROM ${this.table} WHERE _id='${id}'`;
+        const sql = `DELETE FROM ${this.table} WHERE _id='${id}' RETURNING _id`;
         logger.trace(`SQL :: ${sql}`);
 
         const result = await runWithRetry(this.connection, sql);
@@ -386,7 +443,7 @@ Table.prototype.deleteMany = async function (ids) {
         if (!ids) throw new Error('No ids provided');
 
         const sql =
-            `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')})`;
+            `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')}) RETURNING _id`;
 
         logger.trace(`SQL :: ${sql}`);
 
