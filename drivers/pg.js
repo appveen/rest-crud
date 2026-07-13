@@ -23,6 +23,30 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function errCode(err) {
+    return (err && (err.code || err.errno)) || (err && err.message) || 'unknown';
+}
+
+const DATASERVICE_TIMEOUT_MS = parseInt(process.env.DATASERVICE_TIMEOUT, 10) || 60000;
+const ACQUIRE_TIMEOUT_DEFAULT_MS = Math.max(5000, Math.floor(DATASERVICE_TIMEOUT_MS * 0.9));
+const VALIDATE_TIMEOUT_MS = 3000;
+
+function raceAcquire(promise, ms, code, onLate) {
+    let timer, timedOut = false;
+    promise.then(
+        (v) => { if (timedOut && onLate) { try { onLate(v); } catch (_) {} } },
+        () => {}
+    );
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => { timer = setTimeout(() => { timedOut = true; reject(Object.assign(new Error(`${code} after ${ms}ms`), { code })); }, ms); })
+    ]).finally(() => clearTimeout(timer));
+}
+
+function jitter(base) {
+    return Math.round(base / 2 + Math.random() * base / 2);
+}
+
 const RETRYABLE_PG_CODES = new Set([
     '57P01', '57P02', '57P03', '57P05', '08000', '08003', '08006', '25P03', '53300'
 ]);
@@ -43,20 +67,92 @@ function isRetryableConnectionError(err) {
         || msg.includes('connection ended');
 }
 
-async function runWithRetry(connection, sql, values) {
-    const maxRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
-    const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
+const lastSuccessAt = new WeakMap();
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+function withinBypassWindow(pool, windowMs) {
+    if (windowMs <= 0) return false;
+    const last = lastSuccessAt.get(pool);
+    return last !== undefined && (Date.now() - last) < windowMs;
+}
+
+async function runWithRetry(connection, sql, values, logSql) {
+    const midFlightRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
+    const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
+    const acquireTimeoutMs = Math.max(1000, resolveNumber(process.env.PG_ACQUIRE_TIMEOUT, ACQUIRE_TIMEOUT_DEFAULT_MS));
+    const preValidate = String(process.env.PG_PRE_VALIDATE || 'true').trim().toLowerCase() !== 'false';
+    const bypassWindowMs = Math.max(0, resolveNumber(process.env.PG_PRE_VALIDATE_INTERVAL, 3000));
+
+    const acquireDeadline = Date.now() + acquireTimeoutMs;
+    let acquireAttempt = 0;
+    let midFlightAttempt = 0;
+    let sqlLogged = false;
+
+    for (;;) {
         try {
-            return await connection.unsafe(sql, values);
-        } catch (err) {
-            if (!isRetryableConnectionError(err) || attempt >= maxRetries) {
-                logger.error(`Error querying :: ${err}`);
-                throw err;
+            let result;
+            if (preValidate && !withinBypassWindow(connection, bypassWindowMs)) {
+                let reserved;
+                try {
+                    const reserveBudget = Math.max(1, acquireDeadline - Date.now());
+                    reserved = await raceAcquire(connection.reserve(), reserveBudget, 'RESERVE_TIMEOUT',
+                        (lateConn) => { try { lateConn.release(); } catch (_) {} });
+                    logger.trace('Pre-validating connection (SELECT 1)');
+                    await raceAcquire(reserved`SELECT 1`,
+                        Math.min(VALIDATE_TIMEOUT_MS, Math.max(1, acquireDeadline - Date.now())), 'VALIDATE_TIMEOUT',
+                        () => { try { reserved.release(); } catch (_) {} });
+                } catch (acqErr) {
+                    const acqCode = errCode(acqErr);
+                    // ping still in-flight on VALIDATE_TIMEOUT — the late-settle hook releases it
+                    if (reserved && acqCode !== 'VALIDATE_TIMEOUT') {
+                        try { reserved.release(); } catch (releaseErr) { logger.trace(`Failed to release stale connection :: ${releaseErr}`); }
+                    }
+                    logger.warn(`Pre-validation caught stale connection (${acqCode})`);
+                    acqErr.preValidationCatch = true;
+                    throw acqErr;
+                }
+                try {
+                    if (logSql && !sqlLogged) { sqlLogged = true; logger.debug('Performing SQL Query'); logger.trace(`SQL Query :: ${sql}`); }
+                    result = await reserved.unsafe(sql, values);
+                } finally {
+                    try { reserved.release(); } catch (releaseErr) {
+                        logger.trace(`Failed to release reserved connection :: ${releaseErr}`);
+                    }
+                }
+            } else {
+                if (logSql && !sqlLogged) { sqlLogged = true; logger.debug('Performing SQL Query'); logger.trace(`SQL Query :: ${sql}`); }
+                result = await connection.unsafe(sql, values);
             }
-            logger.trace(`Connection error (${err.code || err.errno || err.message}); retry ${attempt + 1}/${maxRetries} on a fresh connection`);
-            await sleep(retryDelayMs * (attempt + 1));
+            if (preValidate) lastSuccessAt.set(connection, Date.now());
+            const retried = acquireAttempt + midFlightAttempt;
+            if (retried > 0) logger.warn(`Query recovered after ${retried} retr${retried === 1 ? 'y' : 'ies'} (stale connection absorbed)`);
+            return result;
+        } catch (err) {
+            const code = errCode(err);
+            // classify acquisition failures first (RESERVE/VALIDATE_TIMEOUT aren't in the retryable sets)
+            if (err.preValidationCatch) {
+                const remaining = acquireDeadline - Date.now();
+                if (remaining <= 0) {
+                    logger.error(`Could not acquire a live connection within ${acquireTimeoutMs}ms — giving up (${code}) :: ${err}`);
+                    throw err;
+                }
+                acquireAttempt++;
+                const delay = Math.min(jitter(retryDelayMs * acquireAttempt), 1000, remaining);
+                logger.warn(`Acquiring live connection (attempt ${acquireAttempt}, ${remaining}ms budget left); retry in ${delay}ms`);
+                await sleep(delay);
+            } else if (!isRetryableConnectionError(err)) {
+                logger.error(`Query failed (non-retryable ${code}) :: ${err}`);
+                throw err;
+            } else {
+                midFlightAttempt++;
+                if (midFlightAttempt > midFlightRetries) {
+                    logger.error(`Query failed after ${midFlightRetries} mid-flight retries — giving up (${code}) :: ${err}`);
+                    throw err;
+                }
+                const delay = jitter(retryDelayMs * midFlightAttempt);
+                logger.warn(`Transient connection error mid-query (${code}); retry ${midFlightAttempt}/${midFlightRetries} in ${delay}ms`);
+                logger.trace(`Retrying query :: ${sql}`);
+                await sleep(delay);
+            }
         }
     }
 }
@@ -88,12 +184,21 @@ CRUD.prototype.connect = async function () {
 
         const optNum = (v) => { const n = parseInt(v, 10); return Number.isNaN(n) ? undefined : n; };
 
+        const statementTimeout = String(process.env.PG_STATEMENT_TIMEOUT || '').trim();
+        const useStatementTimeout = /^\d+\s*(ms|s|min|h|d)?$/i.test(statementTimeout) && parseInt(statementTimeout, 10) > 0;
+
         let baseOptions = {
             ssl: cd.ssl,
             max: parseInt(cd.maxPool, 10) || 10,
             idle_timeout: optNum(cd.idleTimeout),
             max_lifetime: optNum(cd.maxLifetime),
             connect_timeout: optNum(cd.connectTimeout),
+            connection: Object.assign(
+                { application_name: cd.applicationName || process.env.HOSTNAME || 'rest-crud' },
+                useStatementTimeout ? { statement_timeout: statementTimeout } : {}
+            ),
+            // cap postgres.js reconnect backoff (default grows to 20s) so a dead DB surfaces fast
+            backoff: (retries) => Math.min(0.1 * (2 ** retries), 2) * (0.5 + Math.random() / 2),
             onnotice: (notice) => logger.trace(`PG Notice :: ${notice && notice.message}`),
             types: {
                 date: {
@@ -129,9 +234,18 @@ CRUD.prototype.connect = async function () {
             });
 
         // Test connection
-        const result = await this.connection`SELECT 1 + 1 AS solution`;
-        console.log('The solution is:', result[0].solution);
-        console.log('Connection Successful!');
+        await this.connection`SELECT 1 + 1 AS solution`;
+
+        const preValidate = String(process.env.PG_PRE_VALIDATE || 'true').trim().toLowerCase() !== 'false';
+        const bypassWindowMs = Math.max(0, resolveNumber(process.env.PG_PRE_VALIDATE_INTERVAL, 3000));
+        logger.info(`Connected to PostgreSQL :: pool max=${baseOptions.max}, application_name=${baseOptions.connection.application_name}`
+            + ` | statement_timeout=${useStatementTimeout ? statementTimeout + ' (PG_STATEMENT_TIMEOUT)' : 'DISABLED — a runaway query is never cancelled server-side'}`);
+        logger.info(`Pre-validation ${preValidate ? 'ENABLED' : 'DISABLED'} (PG_PRE_VALIDATE)`
+            + ` | bypass window=${bypassWindowMs}ms (PG_PRE_VALIDATE_INTERVAL${bypassWindowMs === 0 ? ' — every query validated' : ''})`
+            + ` | request deadline=${DATASERVICE_TIMEOUT_MS}ms (DATASERVICE_TIMEOUT)`
+            + ` | acquire budget=${Math.max(1000, resolveNumber(process.env.PG_ACQUIRE_TIMEOUT, ACQUIRE_TIMEOUT_DEFAULT_MS))}ms (PG_ACQUIRE_TIMEOUT)`
+            + ` | mid-flight retries=${Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3))} (PG_QUERY_RETRIES)`
+            + ` | retry backoff=${resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200)}ms jittered (PG_QUERY_RETRY_DELAY)`);
 
         return 'Connection Successful';
     } catch (err) {
@@ -146,8 +260,8 @@ CRUD.prototype.connect = async function () {
  */
 CRUD.prototype.disconnect = async function () {
     try {
-        await this.connection.end();
-        console.log('Database Disconnected!');
+        await this.connection.end({ timeout: 5 });
+        logger.info('Database disconnected');
         return 'Database Disconnected';
     } catch (err) {
         logger.error('Error disconnecting :: ', err);
@@ -160,14 +274,45 @@ CRUD.prototype.disconnect = async function () {
  * Raw SQL query handler
  */
 CRUD.prototype.sqlQuery = async function (sql, values) {
-    logger.debug('Performing SQL Query');
-    logger.trace(`SQL Query :: ${sql}`);
-
     if (!sql) throw new Error('No sql query provided.');
 
-    const result = await runWithRetry(this.connection, sql, values);
+    const result = await runWithRetry(this.connection, sql, values, true);
     logger.trace(`Query result :: ${JSON.stringify(result[0])}`);
     return result;
+};
+
+
+/**
+ * Runs fn inside a transaction on a single reserved connection. Connection-class
+ * errors retry the whole block, so fn must be safe to re-run.
+ */
+CRUD.prototype.withTransaction = async function (fn) {
+    const maxRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
+    const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const result = await this.connection.begin(async (txSql) => {
+                const tx = {
+                    sqlQuery: (sql, values) => {
+                        logger.trace(`TX SQL :: ${sql}`);
+                        return txSql.unsafe(sql, values);
+                    }
+                };
+                return fn(tx);
+            });
+            if (attempt > 0) logger.warn(`Transaction recovered after ${attempt} retr${attempt === 1 ? 'y' : 'ies'} (stale connection absorbed)`);
+            return result;
+        } catch (err) {
+            if (!isRetryableConnectionError(err) || attempt >= maxRetries) {
+                logger.error(`Error in transaction :: ${err}`);
+                throw err;
+            }
+            const delay = jitter(retryDelayMs * (attempt + 1));
+            logger.warn(`Transient connection error in transaction (${errCode(err)}); retry ${attempt + 1}/${maxRetries} as a whole block in ${delay}ms`);
+            await sleep(delay);
+        }
+    }
 };
 
 
@@ -310,17 +455,10 @@ Table.prototype.create = async function (data) {
         const stmt = utils.insertManyStatement(this.fields, data);
         if (!stmt) throw new Error('No data to insert');
 
-        const insertSQL = `INSERT INTO ${this.table} ${stmt}`;
+        const insertSQL = `INSERT INTO ${this.table} ${stmt} RETURNING *`;
         logger.trace(`SQL Insert :: ${insertSQL}`);
 
-        await runWithRetry(this.connection, insertSQL);
-
-        const selectSQL =
-            `SELECT * FROM ${this.table} WHERE _id IN (${data.map(o => `'${o._id}'`).join(',')})`;
-
-        logger.trace(`SQL Select :: ${selectSQL}`);
-
-        const result = await runWithRetry(this.connection, selectSQL);
+        const result = await runWithRetry(this.connection, insertSQL);
         return result;
 
     } catch (err) {
@@ -342,7 +480,7 @@ Table.prototype.update = async function (id, data) {
         if (!stmt) throw new Error('Invalid update payload');
 
         const sql =
-            `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')})`;
+            `UPDATE ${this.table} ${stmt} WHERE _id IN (${id.split(',').map(i => `'${i}'`).join(',')}) RETURNING _id`;
 
         logger.trace(`SQL :: ${sql}`);
 
@@ -364,7 +502,7 @@ Table.prototype.delete = async function (id) {
         logger.debug(`Deleting record :: ${id}`);
         if (!id) throw new Error('No id provided');
 
-        const sql = `DELETE FROM ${this.table} WHERE _id='${id}'`;
+        const sql = `DELETE FROM ${this.table} WHERE _id='${id}' RETURNING _id`;
         logger.trace(`SQL :: ${sql}`);
 
         const result = await runWithRetry(this.connection, sql);
@@ -386,7 +524,7 @@ Table.prototype.deleteMany = async function (ids) {
         if (!ids) throw new Error('No ids provided');
 
         const sql =
-            `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')})`;
+            `DELETE FROM ${this.table} WHERE _id IN (${ids.split(',').map(id => `'${id}'`).join(',')}) RETURNING _id`;
 
         logger.trace(`SQL :: ${sql}`);
 
