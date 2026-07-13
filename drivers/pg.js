@@ -75,7 +75,7 @@ function withinBypassWindow(pool, windowMs) {
     return last !== undefined && (Date.now() - last) < windowMs;
 }
 
-async function runWithRetry(connection, sql, values) {
+async function runWithRetry(connection, sql, values, logSql) {
     const midFlightRetries = Math.max(0, resolveNumber(process.env.PG_QUERY_RETRIES, 3));
     const retryDelayMs = resolveNumber(process.env.PG_QUERY_RETRY_DELAY, 200);
     const acquireTimeoutMs = Math.max(1000, resolveNumber(process.env.PG_ACQUIRE_TIMEOUT, ACQUIRE_TIMEOUT_DEFAULT_MS));
@@ -85,6 +85,7 @@ async function runWithRetry(connection, sql, values) {
     const acquireDeadline = Date.now() + acquireTimeoutMs;
     let acquireAttempt = 0;
     let midFlightAttempt = 0;
+    let sqlLogged = false;
 
     for (;;) {
         try {
@@ -95,6 +96,7 @@ async function runWithRetry(connection, sql, values) {
                     const reserveBudget = Math.max(1, acquireDeadline - Date.now());
                     reserved = await raceAcquire(connection.reserve(), reserveBudget, 'RESERVE_TIMEOUT',
                         (lateConn) => { try { lateConn.release(); } catch (_) {} });
+                    logger.trace('Pre-validating connection (SELECT 1)');
                     await raceAcquire(reserved`SELECT 1`,
                         Math.min(VALIDATE_TIMEOUT_MS, Math.max(1, acquireDeadline - Date.now())), 'VALIDATE_TIMEOUT',
                         () => { try { reserved.release(); } catch (_) {} });
@@ -109,6 +111,7 @@ async function runWithRetry(connection, sql, values) {
                     throw acqErr;
                 }
                 try {
+                    if (logSql && !sqlLogged) { sqlLogged = true; logger.debug('Performing SQL Query'); logger.trace(`SQL Query :: ${sql}`); }
                     result = await reserved.unsafe(sql, values);
                 } finally {
                     try { reserved.release(); } catch (releaseErr) {
@@ -116,6 +119,7 @@ async function runWithRetry(connection, sql, values) {
                     }
                 }
             } else {
+                if (logSql && !sqlLogged) { sqlLogged = true; logger.debug('Performing SQL Query'); logger.trace(`SQL Query :: ${sql}`); }
                 result = await connection.unsafe(sql, values);
             }
             if (preValidate) lastSuccessAt.set(connection, Date.now());
@@ -270,12 +274,9 @@ CRUD.prototype.disconnect = async function () {
  * Raw SQL query handler
  */
 CRUD.prototype.sqlQuery = async function (sql, values) {
-    logger.debug('Performing SQL Query');
-    logger.trace(`SQL Query :: ${sql}`);
-
     if (!sql) throw new Error('No sql query provided.');
 
-    const result = await runWithRetry(this.connection, sql, values);
+    const result = await runWithRetry(this.connection, sql, values, true);
     logger.trace(`Query result :: ${JSON.stringify(result[0])}`);
     return result;
 };
