@@ -190,7 +190,7 @@ function sharedPoolKey(cd, baseOptions) {
         ? normalizeConnectionString(cd.connectionString)
         : `${cd.host}:${cd.port}/${cd.database}@${cd.user}`;
     const { max, prepare, idle_timeout, max_lifetime, connect_timeout, connection } = baseOptions;
-    return JSON.stringify([target, !!cd.ssl, cd.parseDates, max, prepare, idle_timeout, max_lifetime, connect_timeout, connection]);
+    return JSON.stringify([target, cd.username, !!cd.ssl, cd.parseDates, max, prepare, idle_timeout, max_lifetime, connect_timeout, connection]);
 }
 
 function sharedPoolUsers(key) {
@@ -271,6 +271,9 @@ CRUD.prototype.connect = async function () {
             this.connection = cd.connectionString
                 ? postgres(normalizeConnectionString(cd.connectionString),
                     {
+                        // postgres.js prefers these to the URL's own; unset, the URL's credentials apply
+                        username: cd.username,
+                        password: cd.password,
                         ...baseOptions
                     })
                 : postgres({
